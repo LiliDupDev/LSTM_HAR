@@ -16,7 +16,7 @@ class lstm_param:
         self.wf = util.rand_arr(-0.1, 0.1, units, concat_len)
         self.wo = util.rand_arr(-0.1, 0.1, units, concat_len)
         self.wk = util.rand_arr(-0.1, 0.1, units, classes)
-        self.wr = util.rand_arr(-0.1, 0.1, classes, features) # c1
+        self.wr = util.rand_arr(-0.1, 0.1, features, features) # c1
 
         # bias terms
         self.bg = util.rand_arr(-0.1, 0.1, units, features)
@@ -24,7 +24,7 @@ class lstm_param:
         self.bf = util.rand_arr(-0.1, 0.1, units, features)
         self.bo = util.rand_arr(-0.1, 0.1, units, features)
         self.bk = util.rand_arr(-0.1, 0.1, classes, features)
-        self.br = util.rand_arr(-0.1, 0.1, classes, features)# c1
+        self.br = util.rand_arr(-0.1, 0.1, units, features)# c1
 
         # diffs
         self.wg_diff = np.zeros((units, concat_len))
@@ -32,14 +32,14 @@ class lstm_param:
         self.wf_diff = np.zeros((units, concat_len))
         self.wo_diff = np.zeros((units, concat_len))
         self.wk_diff = np.zeros((units, classes))
-        self.wr_diff = np.zeros((classes, features))# c1
+        self.wr_diff = np.zeros((features, features))# c1
 
         self.bg_diff = np.zeros((units, features))
         self.bi_diff = np.zeros((units, features))
         self.bf_diff = np.zeros((units, features))
         self.bo_diff = np.zeros((units, features))
         self.bk_diff = np.zeros((classes, features))
-        self.br_diff = np.zeros((classes, features))# c1
+        self.br_diff = np.zeros((units, features))# c1
 
         # Adam's
         self.beta_1 = beta_1
@@ -50,28 +50,28 @@ class lstm_param:
         self.adam_m_wf = np.zeros((units, concat_len))
         self.adam_m_wo = np.zeros((units, concat_len))
         self.adam_m_wk = np.zeros((units, classes))
-        self.adam_m_wr = np.zeros((units, classes))# c1
+        self.adam_m_wr = np.zeros((features, features))# c1
 
         self.adam_m_bg = np.zeros((units, features))
         self.adam_m_bi = np.zeros((units, features))
         self.adam_m_bf = np.zeros((units, features))
         self.adam_m_bo = np.zeros((units, features))
         self.adam_m_bk = np.zeros((classes, features))
-        self.adam_m_br = np.zeros((classes, features)) #c1
+        self.adam_m_br = np.zeros((units, features)) #c1
 
         self.adam_v_wg = np.zeros((units, concat_len))
         self.adam_v_wi = np.zeros((units, concat_len))
         self.adam_v_wf = np.zeros((units, concat_len))
         self.adam_v_wo = np.zeros((units, concat_len))
         self.adam_v_wk = np.zeros((units, classes))
-        self.adam_v_wr = np.zeros((classes, features)) #c1
+        self.adam_v_wr = np.zeros((features, features)) #c1
 
         self.adam_v_bg = np.zeros((units, features))
         self.adam_v_bi = np.zeros((units, features))
         self.adam_v_bf = np.zeros((units, features))
         self.adam_v_bo = np.zeros((units, features))
         self.adam_v_bk = np.zeros((classes, features))
-        self.adam_v_br = np.zeros((classes, features)) #c1
+        self.adam_v_br = np.zeros((units, features)) #c1
 
     def apply_diff(self, lr=1, batch=1):
         # Cell hat gate

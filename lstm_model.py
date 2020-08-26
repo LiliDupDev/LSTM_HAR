@@ -2,15 +2,19 @@ from lstm_params import lstm_param
 from lstm_state import lstm_state
 import numpy as np
 import utils as util
+from sklearn import metrics
+
 
 class lstm_model:
 
-    def __init__(self, features, target, classes, units, batch, beta_1, beta_2):
+    def __init__(self, features, target, classes, units, batch, learning_rate ,beta_1, beta_2):
         self.X = features
         self.Y = target
         self.classes = classes
         self.units = units
         self.batch_size = batch
+        self.learning_rate = learning_rate
+        self.loss_history=list()
 
         z, x, y = features.shape
 
@@ -18,7 +22,7 @@ class lstm_model:
         self.h_dim = x + units
         self.params = lstm_param(units, x, y, classes, beta_1, beta_2)
 
-    def train(self, epochs):
+    def train(self, epochs,verbose=True):
         samples, features, series = self.X.shape
 
         for epoch in range(epochs):
@@ -35,8 +39,11 @@ class lstm_model:
             state = lstm_state(self.units, self.x_dim, series)
 
             # Iterations over batchs
-
             loss_batch=0
+
+            y_true = np.zeros((self.Y.shape[0],1))
+            y_predicted = np.zeros((self.Y.shape[0],1))
+            cont_total = 0
 
             for current_batch in batch_set:
                 x_current = current_batch[0]
@@ -46,7 +53,8 @@ class lstm_model:
                 # Cell state
                 if cell_prev is None: cell_prev = np.zeros_like(state.cell_values)
                 if h_prev is None: h_prev = np.zeros_like(state.h)
-                loss = 0 #np.zeros((1,2))
+
+                loss = 0
 
                 # Iterations by value
                 for step in range(samples):
@@ -56,21 +64,30 @@ class lstm_model:
                     xc = np.vstack((time_serie, h_prev))
 
                     # Forward
-                    predicted, step_loss, state, grad_i = self.forward_step(xc, target, h_prev, cell_prev, state)
-
-                    acc_grad = grad_i  # Variable temporal ahorita no sirve
+                    predicted, step_loss, state, grad_i, encoded_result, label = self.forward_step(xc, target, h_prev, cell_prev, state)
                     loss += step_loss
 
-                    self.back_step(xc, acc_grad, state, h_prev, cell_prev)
+                    self.back_step(xc, grad_i, state, h_prev, cell_prev)
 
-                    self.params.apply_diff(0.001)
                     h_prev = state.h
                     cell_prev = state.cell_values
 
+                    # to measure acc
+                    y_true[cont_total] = np.argmax(target,axis=1)
+                    y_predicted[cont_total] = label
+                    cont_total += 1
+
+
+
                 loss_batch+=loss/samples
+                self.params.apply_diff(self.learning_rate, samples)
 
-            print("Epoch:"+str(epoch)+"----- loss-------:" +str(loss_batch/len(batch_set)))
+            epoch_loss=loss_batch/len(batch_set)
+            self.loss_history.append(epoch_loss)
+            if verbose:
+                print("Epoch:"+str(epoch) + "  Loss: " +str(epoch_loss) + " " + self.measure_accuracy(y_true,y_predicted))
 
+        return y_true,y_predicted
 
     # x = time series matrix
     # h_prev = hidden
@@ -88,15 +105,21 @@ class lstm_model:
         state.forget_values = util.sigmoid(np.dot(self.params.wf, xc) + self.params.bf)
         state.output_values = util.sigmoid(np.dot(self.params.wo, xc) + self.params.bo)
         state.cell_values = state.cell_temp_values * state.input_values + h_prev * state.forget_values
-        state.h = state.cell_values * state.output_values
+        state.h = state.cell_values * np.tanh(state.output_values)
+
+        # Relu
+        relu_layer = util.relu(np.dot(state.h, self.params.wr)+self.params.br)
 
         # Classification
-        soft_arg = np.dot(self.params.wk.T, state.h) + self.params.bk
+        soft_arg = np.dot(self.params.wk.T, relu_layer) + self.params.bk
+        # soft_arg = np.dot(self.params.wk.T, state.h) + self.params.bk
         predicted = util.softmax(soft_arg)
         softmax_result = np.argmax(predicted, axis=0)
 
+        # print("sum features:", np.argmax(np.sum(predicted,axis=1)))
+        label=np.argmax(np.sum(predicted,axis=1))
         prob = np.multiply(prob, np.sum(np.multiply(target.T, predicted), axis=1).reshape(-1, 1))
-        result = np.sum(prob, axis=1, dtype="float32")
+        result = np.sum(prob, axis=1, dtype="float32").T
 
         # Cross entropy loss
         loss = (-1/features)*(np.sum((np.dot(target,np.log(predicted)) + np.dot(1-target,np.log(1-predicted))),axis=1).reshape(-1,1))
@@ -104,14 +127,24 @@ class lstm_model:
 
         grad = predicted - matrix_target
 
-        return predicted, loss, state, grad
+        return predicted, loss, state, grad, result, label
+
+
 
     def back_step(self, xc, grad, state, h_prev, cell_prev):
         # softmax
         self.params.wk_diff = np.dot(state.h, grad.T)
+        # self.params.wk_diff = np.dot(grad,self.params.wr)
         self.params.bk_diff = grad
 
-        state.diff_h_values = np.dot(self.params.wk, grad)
+
+        # Relu
+        dr_before = util.relu_derivative(np.dot(self.params.wk, grad))
+        self.params.wr_diff += np.dot(dr_before.T, np.dot(state.h, self.params.wr)+self.params.br)
+        self.params.br_diff += dr_before
+
+        # h next state
+        state.diff_h_values = np.dot(dr_before,self.params.wr)
         state.diff_h_values += state.h
 
         # output
@@ -150,3 +183,46 @@ class lstm_model:
                np.dot(self.params.wo.T, db_o)
                )
 
+    def measure_accuracy(self, y, y_pred):
+        # diff = np.sum(y - y_pred)
+        # if diff < 0:
+        #     diff = np.sum(y_pred-y)
+        # n = y.shape[0]
+        #acc = "Diff = "+str(diff)+" acc = "+ str(((n - diff) / n) * 100)
+        m=metrics.accuracy_score(y, y_pred)
+        acc =" acc = " + str(m)
+        return acc
+
+    def predict(self,x,y):
+        samples = x.shape[0]
+        y_predict = np.zeros((samples,1))
+        h=None
+        for s in range(samples):
+            serie = x[s]
+            if h is None: h = np.zeros((self.units, serie.shape[1]))
+            y_predict[s], h = self.predict_series(serie,h)
+
+        y_true = np.asmatrix(np.argmax(y,axis=1))
+        print(self.measure_accuracy(y_true.T,y_predict))
+
+    def predict_series(self, serie, h):
+        xc = np.vstack((serie, h))
+
+        cell_temp_values = np.tanh(np.dot(self.params.wg, xc) + self.params.bg)
+        input_values = util.sigmoid(np.dot(self.params.wi, xc) + self.params.bi)
+        forget_values = util.sigmoid(np.dot(self.params.wf, xc) + self.params.bf)
+        output_values = util.sigmoid(np.dot(self.params.wo, xc) + self.params.bo)
+        cell_values = cell_temp_values * (input_values + h) * forget_values
+        h = cell_values * output_values
+
+        # Relu
+        relu_layer = util.relu(np.dot(h, self.params.wr) + self.params.br)
+
+        # Classification
+        soft_arg = np.dot(self.params.wk.T, relu_layer) + self.params.bk
+        predicted = util.softmax(soft_arg)
+        softmax_result = np.argmax(predicted, axis=0)
+
+        label = np.argmax(np.sum(predicted, axis=1))
+
+        return label, h

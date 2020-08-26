@@ -5,6 +5,9 @@
 
 import data as data_management
 from lstm_model import lstm_model
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def load_data(TIME_STEPS,STEP):
     # Load Data
@@ -14,7 +17,7 @@ def load_data(TIME_STEPS,STEP):
     raw.head()
 
     # to beginning we are only going to use accelerometer
-    valid_activities_set = raw.query("label==1 or label==4")  # raw.copy()
+    valid_activities_set = raw.query("label in (1,4)")  # raw.copy()
     valid_activities_set.columns
 
     # Get only 2 activities and accelerometer data
@@ -60,6 +63,27 @@ def load_data(TIME_STEPS,STEP):
     return X_train, y_train, X_test, y_test
 
 
+def plot_cm(y_true, y_pred, class_names):
+    cm = confusion_matrix(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(18, 16))
+    ax = sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap=sns.diverging_palette(220, 20, n=7),
+        ax=ax
+    )
+    plt.ylabel('Actual')
+    plt.xlabel('Predicted')
+    ax.set_xticklabels(class_names)
+    ax.set_yticklabels(class_names)
+    b, t = plt.ylim() # discover the values for bottom and top
+    b += 0.5 # Add 0.5 to the bottom
+    t -= 0.5 # Subtract 0.5 from the top
+    plt.ylim(b, t) # update the ylim(bottom, top) values
+    plt.show() # ta-da!
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # Hyper parameters
@@ -70,7 +94,7 @@ if __name__ == '__main__':
     STEP = 40
 
     # Units in NN
-    UNITS = 100
+    UNITS = 128
 
     # No. of classes for classification
     CLASSES = 2
@@ -78,11 +102,17 @@ if __name__ == '__main__':
     # Batch size
     BATCH_SIZE = 64
 
+    # Learning rate
+    LEARNING_RATE = 0.0001
+
     # Adam
     BETA_1 = 0.9
     BETA_2 = 0.999
 
     X_train, y_train, X_test, y_test = load_data(TIME_STEPS,STEP)
+    har_lst = lstm_model(X_train, y_train, CLASSES, UNITS, BATCH_SIZE, LEARNING_RATE,BETA_1, BETA_2)
+    y_true, y_predicted = har_lst.train(100)
 
-    har_lst = lstm_model(X_train, y_train, CLASSES, UNITS, BATCH_SIZE, BETA_1, BETA_2)
-    har_lst.train(100)
+    plot_cm(y_true, y_predicted, [0,1])
+
+    har_lst.predict(X_test, y_test)
